@@ -5,4 +5,10 @@
 venv/
 
 # Test file
-hacker_news.txt
+articles-*
+
+# Python
+__pycache__/
+
+# Celery
+celerybeat-schedule

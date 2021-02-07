@@ -1,11 +1,39 @@
+import json
+from datetime import datetime
+
 import requests
 from bs4 import BeautifulSoup
+from celery import Celery
+
+app = Celery('tasks')
 
 
+@app.task
+def save_func(article_list):
+    """
+    Функция для сохранения ссылок в json файл.
+    """
+
+    timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+    filename = f'articles-{timestamp}.json'
+    print('Создание и запись в файл.')
+
+    with open(filename, 'w') as file:
+        json.dump(article_list, file)
+
+
+@app.task
 def get_rss(arg):
+    """
+    Ф-ция сканирует и парсит страницу сохраняя в лист ссылки и
+    заголовки статей.
+    """
+
     article_list = []
+
     try:
         response = requests.get(arg)
+        print('Доступ к ресурсу: код -> ', response.status_code)
         soup = BeautifulSoup(response.text, 'html.parser')
         articles = soup.find_all('a', class_='storylink')
 
@@ -14,6 +42,7 @@ def get_rss(arg):
             title = a.get_text()
 
             article = {
+                'created': str(datetime.now()),
                 'title': title,
                 'link': link,
             }
@@ -26,16 +55,19 @@ def get_rss(arg):
         print('Ошибка: ', e)
 
 
-def save_func(article_list):
-    with open('hacker_news.txt', 'w') as file:
-        for a in article_list:
-            file.write(str(a)+'\n')
-        file.close()
-
-
-url = 'https://news.ycombinator.com'
-
 if __name__ == '__main__':
-    print('Начало...')
+    url = 'https://news.ycombinator.com'
+    print('Запуск процесса.')
+
+    # celery задача
+    from celery.schedules import crontab
+    app.conf.beat_schedule = {
+        # выполняеться каждую минуту
+        'scraping-task-one-min': {
+            'task': 'main.get_rss',
+            'schedule': crontab(),
+        }
+    }
+
     get_rss(url)
-    print('Конец.')
+    print('Завершение.')
